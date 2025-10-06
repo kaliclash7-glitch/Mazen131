@@ -1,0 +1,432 @@
+<!doctype html>
+
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>مدوّن المعاملات المالية</title>  <!-- Google Font (Arabic-friendly) -->  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700;900&display=swap" rel="stylesheet">  <!-- Tailwind Play CDN -->  <script src="https://cdn.tailwindcss.com"></script>  <script>
+    // Tailwind config: enable dark mode via class and add custom colors
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            success: '#10b981',
+            surface: '#f8fafc',
+            text: '#1e293b',
+          }
+        }
+      }
+    }
+  </script>  <!-- Chart.js -->  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>  <style>
+    html, body { font-family: 'Cairo', sans-serif; }
+    /* Smooth transition for theme */
+    .theme-transition { transition: background-color .25s, color .25s; }
+    /* Make tables more readable */
+    .table-fixed thead th { position: sticky; top: 0; z-index: 10; }
+  </style></head>
+<body class="bg-surface text-text dark:bg-gray-900 dark:text-gray-100 theme-transition">
+  <div class="max-w-6xl mx-auto p-6"><!-- Header -->
+<header class="flex items-center justify-between mb-6">
+  <div>
+    <h1 class="text-2xl font-bold">مدوّن المعاملات المالية</h1>
+    <p class="text-sm text-gray-600 dark:text-gray-300">سجّل مصاريفك ودخلك يومياً — تصدير/استيراد وحفظ تلقائي</p>
+  </div>
+
+  <div class="flex items-center gap-3">
+    <button id="themeToggle" class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm">تبديل الوضع</button>
+    <button id="exportCsvBtn" class="px-3 py-2 rounded-lg bg-primary text-white text-sm">تصدير CSV</button>
+    <label class="cursor-pointer inline-flex items-center gap-2 text-sm">
+      <input id="fileImport" type="file" accept="application/json" class="hidden">
+      <span class="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700">استيراد ملف JSON</span>
+    </label>
+  </div>
+</header>
+
+<!-- Main grid -->
+<main class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+  <!-- Form (left column on large screens) -->
+  <section class="lg:col-span-1 bg-white dark:bg-gray-800 rounded-2xl p-5 shadow-sm">
+    <h2 class="text-lg font-semibold mb-3">إضافة معاملة</h2>
+
+    <form id="txnForm" class="space-y-3">
+      <div>
+        <label class="block text-sm mb-1">التاريخ</label>
+        <input id="date" type="date" class="w-full rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent" required>
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">نوع العملية</label>
+        <select id="type" class="w-full rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent" required>
+          <option value="expense">مصروف</option>
+          <option value="income">دخل</option>
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">المبلغ</label>
+        <input id="amount" type="number" step="0.01" min="0" class="w-full rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent" required>
+      </div>
+
+      <div>
+        <label class="block text-sm mb-1">الملاحظة</label>
+        <input id="note" type="text" class="w-full rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent" placeholder="وصف قصير (اختياري)">
+      </div>
+
+      <div class="flex gap-2">
+        <button type="submit" class="flex-1 px-4 py-2 rounded-lg bg-primary text-white">إضافة</button>
+        <button id="clearBtn" type="button" class="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700">مسح الحقول</button>
+      </div>
+    </form>
+
+    <hr class="my-4">
+
+    <div class="space-y-2 text-sm text-gray-600 dark:text-gray-300">
+      <p><strong>حفظ تلقائي:</strong> البيانات تحفظ في المتصفح (LocalStorage).</p>
+      <p>يمكنك تصديرها كملف CSV أو استيراد ملف JSON للعودة إلى البيانات.</p>
+    </div>
+  </section>
+
+  <!-- Table + Controls (middle) -->
+  <section class="lg:col-span-2 bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">سجل المعاملات</h2>
+      <div class="flex gap-2 items-center">
+        <label class="text-sm">فلتر:</label>
+        <select id="filterType" class="rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent text-sm">
+          <option value="all">الكل</option>
+          <option value="income">دخل</option>
+          <option value="expense">مصروف</option>
+        </select>
+        <input id="searchNote" placeholder="بحث بالملاحظة" class="rounded-md border-gray-200 dark:border-gray-700 p-2 bg-transparent text-sm">
+        <button id="clearAllBtn" class="px-3 py-2 rounded-lg border border-red-400 text-red-500 text-sm">مسح السجل</button>
+      </div>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full table-auto text-sm table-fixed">
+        <thead class="bg-gray-50 dark:bg-gray-700">
+          <tr>
+            <th class="p-2 text-right">التاريخ</th>
+            <th class="p-2 text-right">نوع</th>
+            <th class="p-2 text-right">المبلغ</th>
+            <th class="p-2 text-right">ملاحظة</th>
+            <th class="p-2 text-center">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody id="txTableBody">
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Charts area (full width under on small, right column on large) -->
+  <section class="lg:col-span-3 bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm mt-2">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700">
+        <p class="text-sm">إجمالي الدخل</p>
+        <p id="totalIncome" class="text-2xl font-bold">0</p>
+      </div>
+      <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700">
+        <p class="text-sm">إجمالي المصروف</p>
+        <p id="totalExpense" class="text-2xl font-bold">0</p>
+      </div>
+      <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-700">
+        <p class="text-sm">الرصيد</p>
+        <p id="balance" class="text-2xl font-bold">0</p>
+      </div>
+    </div>
+
+    <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="p-4 bg-white dark:bg-gray-900 rounded-xl shadow-sm">
+        <h3 class="text-sm font-semibold mb-3">مخطط: دخل مقابل مصروف</h3>
+        <canvas id="pieChart" height="200"></canvas>
+      </div>
+
+      <div class="p-4 bg-white dark:bg-gray-900 rounded-xl shadow-sm">
+        <h3 class="text-sm font-semibold mb-3">مخطط: رصيد عبر الزمن</h3>
+        <canvas id="lineChart" height="200"></canvas>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="text-center text-xs text-gray-500 dark:text-gray-400 mt-6">تم الإنشاء بواسطة مدوّن المعاملات • حفظ محلياً • جاهز للنشر على GitHub Pages</footer>
+
+  </div>  <!-- Main JS -->  <script>
+    // عناصر DOM
+    const txnForm = document.getElementById('txnForm');
+    const dateInput = document.getElementById('date');
+    const typeInput = document.getElementById('type');
+    const amountInput = document.getElementById('amount');
+    const noteInput = document.getElementById('note');
+    const txTableBody = document.getElementById('txTableBody');
+    const exportCsvBtn = document.getElementById('exportCsvBtn');
+    const fileImport = document.getElementById('fileImport');
+    const clearBtn = document.getElementById('clearBtn');
+    const clearAllBtn = document.getElementById('clearAllBtn');
+    const filterType = document.getElementById('filterType');
+    const searchNote = document.getElementById('searchNote');
+    const totalIncomeEl = document.getElementById('totalIncome');
+    const totalExpenseEl = document.getElementById('totalExpense');
+    const balanceEl = document.getElementById('balance');
+    const themeToggle = document.getElementById('themeToggle');
+
+    // Charts
+    let pieChart, lineChart;
+
+    // بيانات المعاملات
+    let transactions = [];
+
+    // مفتاح LocalStorage
+    const STORAGE_KEY = 'finance_txns_v1';
+
+    // تهيئة التاريخ الافتراضي لليوم
+    dateInput.value = new Date().toISOString().slice(0,10);
+
+    // تحميل من التخزين المحلي
+    function loadFromStorage(){
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(raw){
+        try{
+          transactions = JSON.parse(raw);
+        }catch(e){ transactions = []; }
+      }
+    }
+
+    // حفظ للتخزين المحلي
+    function saveToStorage(){
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
+    }
+
+    // إضافة معاملة
+    txnForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const txn = {
+        id: Date.now().toString(),
+        date: dateInput.value,
+        type: typeInput.value,
+        amount: parseFloat(amountInput.value) || 0,
+        note: noteInput.value || ''
+      };
+      transactions.push(txn);
+      saveToStorage();
+      render();
+      txnForm.reset();
+      dateInput.value = new Date().toISOString().slice(0,10);
+    });
+
+    // مسح حقول
+    clearBtn.addEventListener('click', ()=>{
+      txnForm.reset(); dateInput.value = new Date().toISOString().slice(0,10);
+    });
+
+    // مسح كامل السجل
+    clearAllBtn.addEventListener('click', ()=>{
+      if(confirm('هل أنت متأكد من مسح كل السجل؟ هذه العملية لا يمكن التراجع عنها.')){
+        transactions = [];
+        saveToStorage();
+        render();
+      }
+    });
+
+    // تصدير CSV
+    exportCsvBtn.addEventListener('click', ()=>{
+      if(transactions.length === 0){ alert('لا توجد بيانات لتصدير'); return; }
+      const header = ['التاريخ','النوع','المبلغ','الملاحظة'];
+      const rows = transactions.map(t=>[t.date, t.type === 'income' ? 'دخل' : 'مصروف', t.amount, '"'+(t.note||'')+'"'].join(','));
+      const csv = [header.join(','), ...rows].join('\n');
+      const blob = new Blob([csv], {type: 'text/csv;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'finance_transactions_'+ new Date().toISOString().slice(0,10) +'.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // استيراد JSON
+    fileImport.addEventListener('change', (e)=>{
+      const f = e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = (ev)=>{
+        try{
+          const parsed = JSON.parse(ev.target.result);
+          if(Array.isArray(parsed)){
+            // دمج أو استبدال؟ هنا ندمج
+            transactions = transactions.concat(parsed);
+            saveToStorage();
+            render();
+            alert('تم استيراد البيانات');
+          }else{
+            alert('ملف غير صالح: يجب أن يحتوي على مصفوفة من المعاملات');
+          }
+        }catch(err){ alert('خطأ بقراءة الملف: ' + err.message); }
+      };
+      reader.readAsText(f);
+      e.target.value = '';
+    });
+
+    // حذف عنصر
+    function deleteTxn(id){
+      if(!confirm('حذف هذه المعاملة؟')) return;
+      transactions = transactions.filter(t=>t.id !== id);
+      saveToStorage();
+      render();
+    }
+
+    // تعديل عنصر (بسيط: يملأ الحقول ويحذف العنصر القديم)
+    function editTxn(id){
+      const t = transactions.find(x=>x.id===id);
+      if(!t) return;
+      dateInput.value = t.date;
+      typeInput.value = t.type;
+      amountInput.value = t.amount;
+      noteInput.value = t.note;
+      // حذف القديم
+      transactions = transactions.filter(x=>x.id!==id);
+      saveToStorage();
+      render();
+    }
+
+    // عرض الجدول
+    function renderTable(filtered){
+      txTableBody.innerHTML = '';
+      if(filtered.length === 0){
+        txTableBody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">لا توجد معاملات</td></tr>';
+        return;
+      }
+      // نعرض الأحدث أولاً
+      filtered.slice().reverse().forEach(t => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="p-2 text-right">${t.date}</td>
+          <td class="p-2 text-right">${t.type === 'income' ? 'دخل' : 'مصروف'}</td>
+          <td class="p-2 text-right">${formatNumber(t.amount)}</td>
+          <td class="p-2 text-right">${escapeHtml(t.note || '')}</td>
+          <td class="p-2 text-center">
+            <button onclick="editTxn('${t.id}')" class="px-2 py-1 text-xs border rounded mr-2">تعديل</button>
+            <button onclick="deleteTxn('${t.id}')" class="px-2 py-1 text-xs border rounded text-red-500">حذف</button>
+          </td>
+        `;
+        txTableBody.appendChild(tr);
+      });
+    }
+
+    // تنسيق الأرقام
+    function formatNumber(n){
+      return new Intl.NumberFormat('ar-EG', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(n);
+    }
+
+    function escapeHtml(s){
+      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // فلترة
+    function getFiltered(){
+      const type = filterType.value;
+      const q = searchNote.value.trim();
+      return transactions.filter(t => {
+        if(type !== 'all' && t.type !== type) return false;
+        if(q && !(t.note||'').toLowerCase().includes(q.toLowerCase())) return false;
+        return true;
+      });
+    }
+
+    filterType.addEventListener('change', render);
+    searchNote.addEventListener('input', render);
+
+    // إحصاءات
+    function computeStats(){
+      let income = 0, expense = 0;
+      transactions.forEach(t => {
+        if(t.type === 'income') income += t.amount;
+        else expense += t.amount;
+      });
+      const balance = income - expense;
+      totalIncomeEl.textContent = formatNumber(income);
+      totalExpenseEl.textContent = formatNumber(expense);
+      balanceEl.textContent = formatNumber(balance);
+      return {income, expense, balance};
+    }
+
+    // رسم المخططات
+    function renderCharts(){
+      const {income, expense} = computeStats();
+
+      // Pie chart (دخل/مصروف)
+      const pieCtx = document.getElementById('pieChart').getContext('2d');
+      if(pieChart) pieChart.destroy();
+      pieChart = new Chart(pieCtx, {
+        type: 'pie',
+        data: {
+          labels: ['دخل','مصروف'],
+          datasets: [{
+            data: [income, expense],
+            // Chart.js will pick defaults; do not set colors explicitly per instructions
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+
+      // Line chart (رصيد عبر الزمن)
+      const lineCtx = document.getElementById('lineChart').getContext('2d');
+      if(lineChart) lineChart.destroy();
+
+      // نحسب الرصيد التراكمي بحسب التاريخ
+      const sorted = transactions.slice().sort((a,b)=> new Date(a.date) - new Date(b.date));
+      let running = 0;
+      const labels = [];
+      const data = [];
+      sorted.forEach(t => {
+        running += (t.type === 'income' ? t.amount : -t.amount);
+        labels.push(t.date);
+        data.push(running);
+      });
+
+      lineChart = new Chart(lineCtx, {
+        type: 'line',
+        data: { labels, datasets: [{ label: 'الرصيد', data, fill: false, tension: 0.2 }] },
+        options: { scales: { x: { display: true }, y: { display: true } }, plugins: { legend: { display: false } } }
+      });
+    }
+
+    // عرض عام
+    function render(){
+      const filtered = getFiltered();
+      renderTable(filtered);
+      renderCharts();
+    }
+
+    // تهيئة الواجهة
+    function init(){
+      loadFromStorage();
+      render();
+
+      // تهيئة الثيم حسب إعداد النظام أو الخيار السابق
+      const savedTheme = localStorage.getItem('theme_mode');
+      if(savedTheme === 'dark') document.documentElement.classList.add('dark');
+      else if(savedTheme === 'light') document.documentElement.classList.remove('dark');
+      else if(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
+
+      themeToggle.addEventListener('click', ()=>{
+        document.documentElement.classList.toggle('dark');
+        const isDark = document.documentElement.classList.contains('dark');
+        localStorage.setItem('theme_mode', isDark ? 'dark' : 'light');
+      });
+
+      // تعريض الوظائف للحذف/تعديل من السطر (لأننا نستخدم onclick داخل innerHTML)
+      window.deleteTxn = deleteTxn;
+      window.editTxn = editTxn;
+    }
+
+    // بدء
+    init();
+  </script></body>
+            </html>
